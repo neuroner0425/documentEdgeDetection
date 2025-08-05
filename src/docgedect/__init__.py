@@ -83,8 +83,7 @@ def realtime_edge_dect(image, initial_max_size=1000.0, initial_padding=0):
     canny_img = cv2.Canny(gray_for_canny, 100, 200)
     im_canny = ax_img3.imshow(canny_img, cmap='gray')
     
-    contours, _ = cv2.findContours(canny_img.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:8]
+    best_contour, contours = find_document_contour(resize_img, canny_img)
     im_countour = ax_img4.imshow(opencv2pil(cv2.drawContours(resize_img.copy(), contours, -1, (0, 255, 0), 2)))
 
     def update(val=None):
@@ -142,9 +141,10 @@ def realtime_edge_dect(image, initial_max_size=1000.0, initial_padding=0):
         im_canny.set_data(grad_img)
         im_canny.set_cmap('gray')
         
-        contours, _ = cv2.findContours(grad_img.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)[:8]
-        im_countour.set_data(opencv2pil(cv2.drawContours(resize_img.copy(), contours, -1, (0, 255, 0), 2)))
+        best_contour, contours = find_document_contour(resize_img, grad_img)
+        draw_all_contour_img = cv2.drawContours(resize_img.copy(), contours, -1, (0, 255, 0), 2)
+        draw_best_contour_img = cv2.drawContours(draw_all_contour_img.copy(), [best_contour], -1, (0, 0, 255), 2)
+        im_countour.set_data(opencv2pil(draw_best_contour_img))
         
         fig.canvas.draw_idle()
 
@@ -187,11 +187,11 @@ def find_document_contour(original_image: np.ndarray, edged: np.ndarray, save_di
 
     if screen_cnt is None:
         # print("문서의 윤곽선을 찾지 못했습니다.")
-        return None
+        return None, contours
     else:
         # print("STEP 2: 윤곽선 찾기 완료")
         if(save_dir):
             os.makedirs(os.path.join(os.pardir, save_dir), exist_ok=True)
             cv2.imwrite(save_dir, cv2.drawContours(original_image.copy(), [screen_cnt], -1, (0, 255, 0), 2))
             
-        return screen_cnt
+        return screen_cnt, contours
