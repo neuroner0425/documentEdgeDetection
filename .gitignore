@@ -6,5 +6,7 @@ __pycache__/
 .Python
 db.sqlite3
 .env
+.vscode
+.idea
 
 dataset/
