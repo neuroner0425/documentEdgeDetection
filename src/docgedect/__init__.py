@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, CheckButtons
 
-def realtime_edge_dect(image, initial_max_size=1000.0, initial_padding=0):
+def realtime_edge_dect(image):
     orig_img = image.copy()
     resize_img = preprocess.resize_image(orig_img)
 
@@ -32,11 +32,15 @@ def realtime_edge_dect(image, initial_max_size=1000.0, initial_padding=0):
 
     # 슬라이더/체크박스 초기값
     slider_contrast = Slider(ax_contrast, 'Contrast', 0.5, 3.0, valinit=1.0)
+    slider_contrast.set_val(val=1.8)
     slider_exposure = Slider(ax_exposure, 'Exposure', -255, 255, valinit=0.0)
-    slider_padding = Slider(ax_padding, 'Padding', 0, 100, valinit=initial_padding, valstep=1)
-    slider_canny1 = Slider(ax_canny1, 'Canny th1', 0, 600, valinit=100, valstep=1)
+    slider_exposure.set_val(val=-100)
+    slider_padding = Slider(ax_padding, 'Padding', 0, 100, valinit=0, valstep=1)
+    slider_padding.set_val(val=100)
+    slider_canny1 = Slider(ax_canny1, 'Canny th1', 0, 600, valinit=150, valstep=1)
     slider_canny2 = Slider(ax_canny2, 'Canny th2', 0, 600, valinit=200, valstep=1)
     slider_closing = Slider(ax_closing, 'Closing k', 1, 20, valinit=1, valstep=1)
+    slider_closing.set_val(val=5)
     slider_gradient = Slider(ax_gradient, 'Grad k', 1, 10, valinit=2, valstep=1)
 
     checkbox_labels = [
@@ -46,19 +50,19 @@ def realtime_edge_dect(image, initial_max_size=1000.0, initial_padding=0):
     checkbox = CheckButtons(
         ax_checkbox,
         checkbox_labels,
-        [False, False, False, False, False]
+        [True, False, False, False, True]
     )
 
     # 첫 결과 계산 및 이미지 표시
     def _preproc():
         return preprocess_image(
             orig_img,
-            max_size=initial_max_size,
-            padding=initial_padding,
-            reduce_lighting_=False,
+            max_size=1000.0,
+            padding=slider_padding.val,
+            reduce_lighting_=True,
             gray=False,
-            contrast=1.0,
-            exposure=0.0,
+            contrast=slider_contrast.val,
+            exposure=slider_exposure.val,
             black_point_threshold=None,
             highlight_increase=None,
             show_steps=False,
@@ -80,11 +84,21 @@ def realtime_edge_dect(image, initial_max_size=1000.0, initial_padding=0):
         cmap='gray' if len(proc_img.shape) == 2 else None
     )
     gray_for_canny = proc_img if len(proc_img.shape) == 2 else cv2.cvtColor(proc_img, cv2.COLOR_BGR2GRAY)
-    canny_img = cv2.Canny(gray_for_canny, 100, 200)
-    im_canny = ax_img3.imshow(canny_img, cmap='gray')
+    canny_img = cv2.Canny(gray_for_canny, slider_canny1.val, slider_canny2.val)
     
-    best_contour, contours = find_document_contour(resize_img, canny_img)
-    im_countour = ax_img4.imshow(opencv2pil(cv2.drawContours(resize_img.copy(), contours, -1, (0, 255, 0), 2)))
+    k = np.ones((slider_closing.val, slider_closing.val), np.uint8)
+    close_img = cv2.morphologyEx(canny_img, cv2.MORPH_CLOSE, k)
+    
+    k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (slider_gradient.val, slider_gradient.val))
+    grad_img = cv2.morphologyEx(close_img, cv2.MORPH_GRADIENT, k2)
+    
+    im_canny = ax_img3.imshow(grad_img, cmap='gray')
+    
+    cnt, best_contour, contours = find_document_contour(resize_img, grad_img)
+    draw_all_contour_img = cv2.drawContours(resize_img.copy(), contours, -1, (0, 255, 0), 2)
+    draw_best_contour_img = cv2.drawContours(draw_all_contour_img, [cnt], -1, (0, 0, 255), 2)
+    draw_best_contour_img = cv2.drawContours(draw_best_contour_img, [best_contour], -1, (255, 0, 0), 2)
+    im_countour = ax_img4.imshow(opencv2pil(draw_best_contour_img))
 
     def update(val=None):
         vals = {
@@ -105,7 +119,7 @@ def realtime_edge_dect(image, initial_max_size=1000.0, initial_padding=0):
 
         out = preprocess_image(
             orig_img,
-            max_size=initial_max_size,
+            max_size=1000.0,
             padding=vals['padding'],
             reduce_lighting_=vals['reduce_lighting'],
             gray=vals['gray'],
@@ -129,21 +143,18 @@ def realtime_edge_dect(image, initial_max_size=1000.0, initial_padding=0):
         if vals['use_closing']:
             k = np.ones((vals['closing'], vals['closing']), np.uint8)
             close_img = cv2.morphologyEx(canny_img, cv2.MORPH_CLOSE, k)
-        else:
-            close_img = canny_img
-
-        if vals['use_closing']:
             k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (vals['gradient'], vals['gradient']))
             grad_img = cv2.morphologyEx(close_img, cv2.MORPH_GRADIENT, k2)
         else:
-            grad_img = close_img
+            grad_img = close_img = canny_img
 
         im_canny.set_data(grad_img)
         im_canny.set_cmap('gray')
         
-        best_contour, contours = find_document_contour(resize_img, grad_img)
+        cnt, best_contour, contours = find_document_contour(resize_img, grad_img)
         draw_all_contour_img = cv2.drawContours(resize_img.copy(), contours, -1, (0, 255, 0), 2)
-        draw_best_contour_img = cv2.drawContours(draw_all_contour_img.copy(), [best_contour], -1, (0, 0, 255), 2)
+        draw_best_contour_img = cv2.drawContours(draw_all_contour_img, [cnt], -1, (0, 0, 255), 2)
+        draw_best_contour_img = cv2.drawContours(draw_best_contour_img, [best_contour], -1, (255, 0, 0), 2)
         im_countour.set_data(opencv2pil(draw_best_contour_img))
         
         fig.canvas.draw_idle()
@@ -161,7 +172,7 @@ def realtime_edge_dect(image, initial_max_size=1000.0, initial_padding=0):
     plt.show()
 
 
-def find_document_contour(original_image: np.ndarray, edged: np.ndarray, save_dir: str = None):
+def find_document_contour(original_image: np.ndarray, edged: np.ndarray, save_dir: str = None, show_all: bool = False):
     """
     윤곽선을 찾고, 4개 꼭짓점의 문서 윤곽을 반환
 
@@ -178,20 +189,57 @@ def find_document_contour(original_image: np.ndarray, edged: np.ndarray, save_di
     # print(f"STEP 2: 윤곽선 찾기 시작, 총 {len(contours)}개 발견.")
 
     screen_cnt = None
+    best_contour = None
     for c in contours:
+        area = cv2.contourArea(c)
+        hull = cv2.convexHull(c)
+        hull_area = cv2.contourArea(hull)
+        
+        if hull_area == 0:
+            continue
+        
+        solidity = float(area) / hull_area
+
+        if show_all:
+            img_show = original_image.copy()
+            color = (0, 255, 0)
+            thickness = 2
+            
+            cv2.drawContours(img_show, [c], -1, color, thickness)
+
+            h, w = img_show.shape[:2]
+            text = f"solidity: {solidity:.2f}"
+
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.7
+            font_thickness = 2
+
+            (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, font_thickness)
+            text_x = (w - text_width) // 2
+            text_y = h - 10  # 아래에서 10픽셀 위에 표시
+
+            cv2.putText(img_show, text, (text_x, text_y), font, font_scale, (255, 0, 0), font_thickness)
+
+            cv2.imshow('Contour with Solidity', img_show)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+        
         peri = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-        if len(approx) == 4:
+        if len(approx) == 4 and solidity >= 0.9:
             screen_cnt = approx
+            best_contour = c
             break
 
     if screen_cnt is None:
         # print("문서의 윤곽선을 찾지 못했습니다.")
-        return None, contours
+        return None, None, contours
     else:
         # print("STEP 2: 윤곽선 찾기 완료")
         if(save_dir):
             os.makedirs(os.path.join(os.pardir, save_dir), exist_ok=True)
-            cv2.imwrite(save_dir, cv2.drawContours(original_image.copy(), [screen_cnt], -1, (0, 255, 0), 2))
+            draw_cnt = cv2.drawContours(original_image.copy(), [screen_cnt], -1, (0, 255, 0), 2)
+            draw_contour = cv2.drawContours(draw_cnt, [best_contour], -1, (255, 0, 0), 2)
+            cv2.imwrite(save_dir, draw_contour)
             
-        return screen_cnt, contours
+        return screen_cnt, best_contour, contours

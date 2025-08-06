@@ -42,23 +42,24 @@ def detect_documents(dataset: str):
             max_size=1000.0,
             padding=100,
             reduce_lighting_=True,
-            gray=True,
-            contrast=2,
-            exposure=-150,
+            gray=False,
+            contrast=1.8,
+            exposure=-125,
             show_steps=False,
             save_steps=save_steps_dir
         )
 
-        candy = cv2.Canny(preprocessed, 300, 400)
+        candy = cv2.Canny(preprocessed, 150, 200)
 
-        kernel = np.ones((1, 1), np.uint8)
+        kernel = np.ones((5, 5), np.uint8)
         closing = cv2.morphologyEx(candy, cv2.MORPH_CLOSE, kernel)
 
         kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
         edge_img = cv2.morphologyEx(closing, cv2.MORPH_GRADIENT, kernel2)
 
         # # 윤곽선 검출
-        dc.find_document_contour(dc.preprocess.resize_image(image, 1000), edge_img, save_dir=f'{save_steps_dir}/contour.jpg')
+        # dc.find_document_contour(dc.preprocess.resize_image(image, 1000), edge_img, save_dir=f'{save_steps_dir}/contour.jpg', show_all=True)
+        dc.find_document_contour(dc.preprocess.resize_image(image, 1000), edge_img, save_dir=f'{save_steps_dir}/contour.jpg', show_all=False)
 
 if __name__ == "__main__":
     datasets = os.listdir(DATASET_PATH)
