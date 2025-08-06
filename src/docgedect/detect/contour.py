@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, CheckButtons
 
-def smooth_contour(contour, image_shape, kernel_size=(8, 8), iterations=1):
+def smooth_contour(contour, image_shape, kernel_size=(10, 10), iterations=1):
     """
     contour를 마스크화한 후 morphological closing으로 smoothing
 

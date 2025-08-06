@@ -31,7 +31,7 @@ def detect_documents(dataset: str):
         
         resize_img = dd.preprocess.resize_image(origin_img.copy(), 1000.0)
         
-        real_time_param = True
+        real_time_param = False
         
         if real_time_param:
             dd.detect.realtime_edge_dect(origin_img)
@@ -67,13 +67,42 @@ def detect_documents(dataset: str):
             cv2.imwrite(f'{save_steps_dir}/edge.jpg', edge_img)
 
             # 윤곽선 검출
-            cnt, best_contour, contours = dd.detect.find_document_contour(resize_img, edge_img, save_dir=save_steps_dir, show_all=False)
+            screen_cnt, best_contour, contours = dd.detect.find_document_contour(resize_img, edge_img, save_dir=save_steps_dir, show_all=False)
             draw_all = cv2.drawContours(resize_img.copy(), contours, -1, (0,255,0), 2)
             cv2.imwrite(f'{save_steps_dir}/all_contours.jpg', draw_all)
             
             draw_best_contour = cv2.drawContours(resize_img.copy(), [best_contour], -1, (0,0,255), 5) if best_contour is not None else resize_img
             cv2.imwrite(f'{save_steps_dir}/best_contours.jpg', draw_best_contour)
             cv2.imwrite(f'out/{dataset}.jpg', draw_best_contour)
+            
+            if screen_cnt is not None and best_contour is not None:
+                # 2. 변환행렬
+                src_quad = dd.reshape.order_points(screen_cnt)
+                w, h = 600, 850
+                dst_quad = np.array([
+                    [0, 0],
+                    [w-1, 0],
+                    [w-1, h-1],
+                    [0, h-1]
+                ], dtype=np.float32)
+                M = cv2.getPerspectiveTransform(src_quad, dst_quad)
+                # 3. best_contour 전체 변환
+                bc = best_contour
+                bc_f32 = bc.astype(np.float32)
+                if bc_f32.ndim == 2:
+                    bc_f32 = bc_f32[None, :, :]
+                elif bc_f32.ndim == 3 and bc_f32.shape[1] == 1:
+                    bc_f32 = bc_f32.reshape(1, -1, 2)
+                warped_best = cv2.perspectiveTransform(bc_f32, M)[0]
+                # 4. 이미지 변환 및 시각화
+                warped_img = cv2.warpPerspective(resize_img, M, (w, h))
+                out = warped_img.copy()
+                cv2.drawContours(out, [warped_best.astype(np.int32)], -1, (0,255,0), 2)
+                cv2.imshow("Warped Document", out)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+            else:
+                print("문서 컨투어 탐지 실패")
 
 if __name__ == "__main__":
     datasets = os.listdir(DATASET_PATH)

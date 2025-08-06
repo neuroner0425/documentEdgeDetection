@@ -8,6 +8,7 @@ db.sqlite3
 .env
 .vscode
 .idea
+.DS_Store
 
 dataset/
 out/
