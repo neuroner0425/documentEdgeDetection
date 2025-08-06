@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-import src.docgedect as dc
+import src.docgedect as dd
 
 DATASET_PATH = './dataset'
 
@@ -24,42 +24,56 @@ def detect_documents(dataset: str):
     for img_file in img_files:
         img_path = os.path.join(input_dir, img_file)
         print(f"Processing {img_path}...")
-        image = cv2.imread(img_path)
-        if image is None:
+        origin_img = cv2.imread(img_path)
+        if origin_img is None:
             print(f"Failed to load image: {img_path}")
             continue
         
-        dc.realtime_edge_dect(image)
-
-        save_steps_dir = os.path.join(input_dir, "preprocess_steps")
-        os.makedirs(save_steps_dir, exist_ok=True)
+        resize_img = dd.preprocess.resize_image(origin_img.copy(), 1000.0)
         
-        # dc.realtime_preprocess_image(image=image)
+        real_time_param = True
+        
+        if real_time_param:
+            dd.detect.realtime_edge_dect(origin_img)
 
-        # 실제로 저장하기
-        preprocessed = dc.preprocess_image(
-            image,
-            max_size=1000.0,
-            padding=100,
-            reduce_lighting_=True,
-            gray=False,
-            contrast=1.8,
-            exposure=-125,
-            show_steps=False,
-            save_steps=save_steps_dir
-        )
+        else:
+            save_steps_dir = os.path.join(input_dir, "steps")
+            os.makedirs(save_steps_dir, exist_ok=True)
 
-        candy = cv2.Canny(preprocessed, 150, 200)
+            # 실제로 저장하기
+            preprocessed = dd.preprocess.preprocess_image(
+                origin_img,
+                max_size=1000.0,
+                padding=100,
+                reduce_lighting_=True,
+                gray=False,
+                contrast=1.50,
+                exposure=-40,
+                black_point_threshold=None,
+                highlight_increase=None,
+                show_steps=False,
+                save_steps=save_steps_dir
+            )
 
-        kernel = np.ones((5, 5), np.uint8)
-        closing = cv2.morphologyEx(candy, cv2.MORPH_CLOSE, kernel)
+            candy = cv2.Canny(preprocessed, 125, 150)
+            cv2.imwrite(f'{save_steps_dir}/candy.jpg', candy)
 
-        kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        edge_img = cv2.morphologyEx(closing, cv2.MORPH_GRADIENT, kernel2)
+            kernel = np.ones((5, 5), np.uint8)
+            closing = cv2.morphologyEx(candy, cv2.MORPH_CLOSE, kernel)
+            cv2.imwrite(f'{save_steps_dir}/closing.jpg', closing)
 
-        # # 윤곽선 검출
-        # dc.find_document_contour(dc.preprocess.resize_image(image, 1000), edge_img, save_dir=f'{save_steps_dir}/contour.jpg', show_all=True)
-        dc.find_document_contour(dc.preprocess.resize_image(image, 1000), edge_img, save_dir=f'{save_steps_dir}/contour.jpg', show_all=False)
+            kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+            edge_img = cv2.morphologyEx(closing, cv2.MORPH_GRADIENT, kernel2)
+            cv2.imwrite(f'{save_steps_dir}/edge.jpg', edge_img)
+
+            # 윤곽선 검출
+            cnt, best_contour, contours = dd.detect.find_document_contour(resize_img, edge_img, save_dir=save_steps_dir, show_all=False)
+            draw_all = cv2.drawContours(resize_img.copy(), contours, -1, (0,255,0), 2)
+            cv2.imwrite(f'{save_steps_dir}/all_contours.jpg', draw_all)
+            
+            draw_best_contour = cv2.drawContours(resize_img.copy(), [best_contour], -1, (0,0,255), 5) if best_contour is not None else resize_img
+            cv2.imwrite(f'{save_steps_dir}/best_contours.jpg', draw_best_contour)
+            cv2.imwrite(f'out/{dataset}.jpg', draw_best_contour)
 
 if __name__ == "__main__":
     datasets = os.listdir(DATASET_PATH)
