@@ -4,36 +4,56 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, CheckButtons
 
-def smooth_contour(contour, image_shape, kernel_size=(10, 10), iterations=1):
+def smooth_contour(contour, image_shape, kernel_size=(10, 10), iterations=1, pad=100):
     """
     contour를 마스크화한 후 morphological closing으로 smoothing
+    - 처리 안정성을 위해 가장자리 충돌을 피하려고 pad 픽셀만큼 패딩을 주고 작업한 뒤 제거.
 
     Args:
-        contour: 원본 contour
+        contour: 원본 contour (N,1,2) 또는 (N,2)
         image_shape: (height, width) of original image
-        kernel_size: closing kernel 크기
+        kernel_size: closing kernel 크기 (예: (10,10))
         iterations: 연산 반복 횟수
+        pad: 패딩 픽셀 수 (기본 100)
 
     Returns:
-        매끄럽게 다듬어진 contour (리스트)
+        매끄럽게 다듬어진 contour (OpenCV 형식, (N,1,2), int32)
     """
-    # 빈 마스크 생성
-    mask = np.zeros(image_shape, dtype=np.uint8)
-    
-    cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+    H, W = image_shape[:2]
 
-    # Closing 연산
+    cnt = np.asarray(contour)
+    if cnt.ndim == 3 and cnt.shape[1] == 1 and cnt.shape[2] == 2:
+        pass
+    elif cnt.ndim == 2 and cnt.shape[1] == 2:
+        cnt = cnt.reshape(-1, 1, 2)
+    else:
+        raise ValueError("contour shape must be (N,1,2) or (N,2)")
+    cnt = cnt.astype(np.int32)
+
+    padded_shape = (H + 2*pad, W + 2*pad)
+    mask = np.zeros(padded_shape, dtype=np.uint8)
+
+    cnt_padded = cnt.copy()
+    cnt_padded[:, 0, 0] += pad
+    cnt_padded[:, 0, 1] += pad
+
+    cv2.drawContours(mask, [cnt_padded], -1, 255, thickness=cv2.FILLED)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, kernel_size)
     closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=iterations)
 
-    # 새 contour 추출
     new_contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    if new_contours:
-        # 가장 큰 contour 반환
-        return max(new_contours, key=cv2.contourArea)
-    else:
-        return contour  # fallback
+    if not new_contours:
+        return cnt
+
+    best = max(new_contours, key=cv2.contourArea).astype(np.int32)
+    best[:, 0, 0] -= pad
+    best[:, 0, 1] -= pad
+
+    best[:, 0, 0] = np.clip(best[:, 0, 0], 0, W - 1)
+    best[:, 0, 1] = np.clip(best[:, 0, 1], 0, H - 1)
+
+    return best
 
 
 def find_document_contour(original_image: np.ndarray, edged: np.ndarray, save_dir: str = None, show_all: bool = False):
@@ -54,7 +74,7 @@ def find_document_contour(original_image: np.ndarray, edged: np.ndarray, save_di
         contours (list): edged에서 검출된 상위 N개의 원본 컨투어 리스트.
 
     Example:
-        cnt, best, all_contours = find_document_contour(img, canny_img)
+        cnt, best, all_contours, hull = find_document_contour(img, canny_img)
     """
     contours, _ = cv2.findContours(edged.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     h, w = original_image.shape[:2]
@@ -76,7 +96,7 @@ def find_document_contour(original_image: np.ndarray, edged: np.ndarray, save_di
 
     # 큰 contour 후보만 상위 8개
     contours = sorted(contours, key=cv2.contourArea, reverse=True)[:8]
-    best_contour, screen_cnt, contour_area, contour_solidity = None, None, None, None
+    best_contour, best_screen_cnt, best_contour_area, best_contour_solidity = None, None, None, None
 
     for c in contours:
         doc_mask = np.zeros_like(edged)
@@ -85,8 +105,8 @@ def find_document_contour(original_image: np.ndarray, edged: np.ndarray, save_di
         clean_cnts, _ = cv2.findContours(doc_mask_clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not clean_cnts:
             continue
-        cleaned = max(clean_cnts, key=cv2.contourArea)
-        smoothed = smooth_contour(cleaned, (h, w))
+        smoothed = max(clean_cnts, key=cv2.contourArea)
+        
         area = cv2.contourArea(smoothed)
         hull = cv2.convexHull(smoothed)
         hull_area = cv2.contourArea(hull)
@@ -110,23 +130,24 @@ def find_document_contour(original_image: np.ndarray, edged: np.ndarray, save_di
         if len(approx) == 4 and solidity >= 0.9:
             if best_contour is None:
                 best_contour = smoothed
-                screen_cnt = approx
-                contour_area = area
-                contour_solidity = solidity
-            elif area >= contour_area * 0.95 and solidity > contour_solidity:
+                best_screen_cnt = approx
+                best_contour_area = area
+                best_contour_solidity = solidity
+            elif area >= best_contour_area * 0.95 and solidity > best_contour_solidity:
                     best_contour = smoothed
-                    screen_cnt = approx
-                    contour_solidity = solidity
+                    best_screen_cnt = approx
+                    best_contour_solidity = solidity
 
-    if screen_cnt is None:
-        return None, None, contours
+    if best_screen_cnt is None:
+        return None, None, None, None
     if show_all:
         cv2.imshow('Best Contour', cv2.drawContours(original_image.copy(), [best_contour], -1, (255, 0, 0), 2))
         cv2.waitKey(0)
         cv2.destroyAllWindows()
     if save_dir:
-        img_draw = cv2.drawContours(original_image.copy(), [screen_cnt], -1, (0,255,0), 2)
+        img_draw = cv2.drawContours(original_image.copy(), [best_screen_cnt], -1, (0,255,0), 2)
         img_draw = cv2.drawContours(img_draw, [best_contour], -1, (255,0,0), 2)
         cv2.imwrite(f'{save_dir}/contour.jpg', img_draw)
 
-    return screen_cnt, best_contour, contours
+    s_contour = smooth_contour(best_contour, (h, w), (100, 100))
+    return best_screen_cnt, best_contour, contours, s_contour

@@ -87,7 +87,7 @@ def realtime_edge_dect(image):
     grad_img = cv2.morphologyEx(close_img, cv2.MORPH_GRADIENT, k2)
     im_canny = ax_img3.imshow(grad_img, cmap='gray')
 
-    cnt, best_contour, contours = contour.find_document_contour(resize_img, grad_img)
+    cnt, best_contour, contours, best_hull = contour.find_document_contour(resize_img, grad_img)
     draw_all = cv2.drawContours(resize_img.copy(), contours, -1, (0,255,0), 2)
     draw_best = cv2.drawContours(draw_all, [best_contour], -1, (0,0,255), 5) if best_contour is not None else draw_all
     im_contour = ax_img4.imshow(preprocess.opencv2pil(draw_best))
@@ -118,7 +118,7 @@ def realtime_edge_dect(image):
         im_canny.set_data(grad)
         im_canny.set_cmap('gray')
 
-        cnt, best_contour, contours = contour.find_document_contour(resize_img, grad)
+        cnt, best_contour, contours, best_hull = contour.find_document_contour(resize_img, grad)
         draw_all = cv2.drawContours(resize_img.copy(), contours, -1, (0,255,0), 2)
         draw_best = cv2.drawContours(draw_all, [best_contour], -1, (0,0,255), 5) if best_contour is not None else draw_all
         im_contour.set_data(preprocess.opencv2pil(draw_best))
