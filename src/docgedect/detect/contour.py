@@ -74,7 +74,7 @@ def find_document_contour(original_image: np.ndarray, edged: np.ndarray, save_di
         contours (list): edged에서 검출된 상위 N개의 원본 컨투어 리스트.
 
     Example:
-        cnt, best, all_contours, hull = find_document_contour(img, canny_img)
+        screen_cnt, wild_contour, contours, smooth_contour = find_document_contour(img, canny_img)
     """
     contours, _ = cv2.findContours(edged.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     h, w = original_image.shape[:2]

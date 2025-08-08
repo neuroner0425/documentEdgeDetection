@@ -67,46 +67,29 @@ def detect_documents(dataset: str):
             cv2.imwrite(f'{save_steps_dir}/edge.jpg', edge_img)
 
             # 윤곽선 검출
-            screen_cnt, best_contour, contours, best_hull = dd.detect.find_document_contour(resize_img, edge_img, save_dir=save_steps_dir, show_all=False)
+            screen_cnt, wild_contour, contours, smooth_contour = dd.detect.find_document_contour(resize_img, edge_img, save_dir=save_steps_dir, show_all=False)
             draw_all = cv2.drawContours(resize_img.copy(), contours, -1, (0,255,0), 2)
             cv2.imwrite(f'{save_steps_dir}/all_contours.jpg', draw_all)
             
-            draw_best_contour = cv2.drawContours(resize_img.copy(), [best_contour], -1, (0,0,255), 1) if best_contour is not None else resize_img
-            draw_best_hull = cv2.drawContours(resize_img.copy(), [best_hull], -1, (0,0,255), 1) if best_contour is not None else resize_img
+            draw_best_contour = cv2.drawContours(resize_img.copy(), [wild_contour], -1, (0,0,255), 1) if wild_contour is not None else resize_img
+            draw_best_hull = cv2.drawContours(resize_img.copy(), [smooth_contour], -1, (0,0,255), 1) if wild_contour is not None else resize_img
             cv2.imwrite(f'{save_steps_dir}/best_contours.jpg', draw_best_contour)
             cv2.imwrite(f'out/{dataset}.jpg', draw_best_contour)
             cv2.imwrite(f'out/{dataset}_smooth.jpg', draw_best_hull)
             
-            # help(screen_cnt)
-            
-            # if screen_cnt is not None and best_contour is not None:
-            #     # 2. 변환행렬
-            #     src_quad = dd.reshape.order_points(screen_cnt)
-            #     w, h = 600, 850
-            #     dst_quad = np.array([
-            #         [0, 0],
-            #         [w-1, 0],
-            #         [w-1, h-1],
-            #         [0, h-1]
-            #     ], dtype=np.float32)
-            #     M = cv2.getPerspectiveTransform(src_quad, dst_quad)
-            #     # 3. best_contour 전체 변환
-            #     bc = best_contour
-            #     bc_f32 = bc.astype(np.float32)
-            #     if bc_f32.ndim == 2:
-            #         bc_f32 = bc_f32[None, :, :]
-            #     elif bc_f32.ndim == 3 and bc_f32.shape[1] == 1:
-            #         bc_f32 = bc_f32.reshape(1, -1, 2)
-            #     warped_best = cv2.perspectiveTransform(bc_f32, M)[0]
-            #     # 4. 이미지 변환 및 시각화
-            #     warped_img = cv2.warpPerspective(resize_img, M, (w, h))
-            #     out = warped_img.copy()
-            #     cv2.drawContours(out, [warped_best.astype(np.int32)], -1, (0,255,0), 2)
-            #     cv2.imshow("Warped Document", out)
-            #     cv2.waitKey(0)
-            #     cv2.destroyAllWindows()
-            # else:
-            #     print("문서 컨투어 탐지 실패")
+            if screen_cnt is not None and wild_contour is not None:
+                warped_final, H_total, warped_stage1, H1, H2 = dd.reshape.two_stage_document_warp(
+                    image_bgr=resize_img,
+                    screen_cnt=screen_cnt,
+                    smooth_contour=smooth_contour,
+                    target_size=None,   # 예) (1000, 1400) 강제 가능
+                    padding=8,
+                    ransac_reproj_threshold=3.0
+                )
+                
+                dd.util.show_side_by_side(warped_stage1, warped_final)
+            else:
+                print("문서 컨투어 탐지 실패")
 
 if __name__ == "__main__":
     datasets = os.listdir(DATASET_PATH)
