@@ -67,27 +67,32 @@ def detect_documents(dataset: str):
             cv2.imwrite(f'{save_steps_dir}/edge.jpg', edge_img)
 
             # 윤곽선 검출
-            screen_cnt, wild_contour, contours, smooth_contour = dd.detect.find_document_contour(resize_img, edge_img, save_dir=save_steps_dir, show_all=False)
+            screen_cnt, wild_contour, contours, s_contour = dd.detect.find_document_contour(
+                resize_img, 
+                edge_img, 
+                save_dir=save_steps_dir, 
+                show_all=False
+            )
             draw_all = cv2.drawContours(resize_img.copy(), contours, -1, (0,255,0), 2)
             cv2.imwrite(f'{save_steps_dir}/all_contours.jpg', draw_all)
             
-            draw_best_contour = cv2.drawContours(resize_img.copy(), [wild_contour], -1, (0,0,255), 1) if wild_contour is not None else resize_img
-            draw_best_hull = cv2.drawContours(resize_img.copy(), [smooth_contour], -1, (0,0,255), 1) if wild_contour is not None else resize_img
+            draw_best_contour = cv2.drawContours(resize_img.copy(), [s_contour], -1, (0,0,255), 2) if wild_contour is not None else resize_img
             cv2.imwrite(f'{save_steps_dir}/best_contours.jpg', draw_best_contour)
             cv2.imwrite(f'out/{dataset}.jpg', draw_best_contour)
-            cv2.imwrite(f'out/{dataset}_smooth.jpg', draw_best_hull)
             
-            if screen_cnt is not None and wild_contour is not None:
-                warped_final, H_total, warped_stage1, H1, H2 = dd.reshape.two_stage_document_warp(
-                    image_bgr=resize_img,
+            if screen_cnt is not None and s_contour is not None:
+                rectified = dd.reshape.rectify_document_persp_then_tps_np(
+                    original_image=origin_img,
                     screen_cnt=screen_cnt,
-                    smooth_contour=smooth_contour,
-                    target_size=None,   # 예) (1000, 1400) 강제 가능
-                    padding=8,
-                    ransac_reproj_threshold=3.0
+                    s_contour=s_contour,
+                    contour_shape=edge_img.shape[:2]
                 )
+
+                cv2.imwrite(f'{save_steps_dir}/reshape.jpg', rectified)
+                cv2.imwrite(f'out/{dataset}_reshape.jpg', rectified)
+                cv2.imshow("Final Unwarped Document", rectified)
+                cv2.waitKey(0); cv2.destroyAllWindows()
                 
-                dd.util.show_side_by_side(warped_stage1, warped_final)
             else:
                 print("문서 컨투어 탐지 실패")
 
